@@ -89,8 +89,8 @@ The firmware architecture was designed to support any provider via REST API. Whe
 
 ### 🟢 ESP32-S3 — The LITE version
 
-<video src="https://github.com/user-attachments/assets/b09528aa-6595-4580-8ac2-b57701bd5fd9" controls width="100%" style="max-width: 720px;">
-  <a href="https://github.com/user-attachments/assets/b09528aa-6595-4580-8ac2-b57701bd5fd9">▶ Watch S3 video demo</a>
+<video src="https://github.com/user-attachments/assets/edd8e80d-49d6-43e2-8205-6af94bb31002" controls width="100%" style="max-width: 720px;">
+  <a href="https://github.com/user-attachments/assets/edd8e80d-49d6-43e2-8205-6af94bb31002">▶ Watch S3 video demo</a>
 </video>
 
 > *Cutting-edge firmware: Fluid response, Deep Sleep, and intelligent RMS filtering.*
