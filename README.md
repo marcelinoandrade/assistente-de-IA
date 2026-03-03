@@ -2,7 +2,7 @@
 
 # 🤖 ESP32 AI Assistant
 
-### *Turn a microcontroller into an AI Assistant with Camera Vision — No Proprietary Cloud, No Monthly Subscription, 100% Yours.*
+### *Turn a microcontroller into an AI Assistant with Camera Vision — Edge Capture, No Mandatory Subscriptions, 100% Private via Local Gateway.*
 
 [![License: Non-Commercial](https://img.shields.io/badge/License-Non--Commercial%20Free-blue.svg)](LICENSE)
 [![Commercial License](https://img.shields.io/badge/Commercial%20License-Request-brightgreen.svg)](mailto:mrclnndrd@gmail.com)
@@ -40,12 +40,12 @@ More than a simple "AI assistant", this is a **multimodal, configurable, and sov
 
 | | ✅ ESP32 AI Assistant | ❌ Typical Solutions |
 |---|---|---|
-| 💰 Hardware cost | **US$20 (S3)** or US$33 (P4-EYE) | US$200 to US$2,000+ |
+| 💰 Hardware cost | **~US$20-35 (S3)** or **~US$33 (P4-EYE)** | US$200 to US$2,000+ |
 | 🌐 Own server | **Optional (supports on-premise)** | Required |
 | 🤖 AI Model | **Provider-agnostic (supports cloud or own LLM)** | Locked to 1 vendor |
-| 📷 Computer Vision | **Yes — in the P4 Pro version** | Limited or cloud-dependent |
-| 🎙️ Voice Processing | **Real-time, edge** | Cloud required |
-| 🔐 **Data Privacy** | **Local processing (on-premise)** | Data on third-party servers |
+| 📷 Computer Vision | **S3: optional external camera / P4: integrated 2MP** | Limited or cloud-dependent |
+| 🎙️ Voice Processing | **Edge capture & orchestration** (Inference via API/Gateway) | Cloud required |
+| 🔐 **Data Privacy** | **100% Private (via local Gateway B)** | Data on third-party servers |
 | 🔋 Power consumption | **Ultra low (S3 Lite)** | High |
 | 👕 **Wearable** | **✅ S3 Lite version** is optimized for this | ❌ Rare / dependent on proprietary ecosystem |
 | 📦 Size | **Smaller than a deck of cards** | Desktop or server |
@@ -56,7 +56,7 @@ More than a simple "AI assistant", this is a **multimodal, configurable, and sov
 
 The firmware uses the **OpenAI Chat Completions API with `input_audio`** as its wire protocol — a standard adopted by the major providers. All credentials and endpoints are configured dynamically via **Captive Portal or SD card** — no recompilation required.
 
-> ⚠️ **Tested with:** Only **OpenAI** (`gpt-4o-audio-preview`) has been validated end-to-end on real hardware. The other providers in the table are architecturally compatible but **have not been tested yet** — contributions welcome (see Contributing section).
+> ⚠️ **Tested with:** Only **OpenAI** models (`gpt-4o-audio-preview` and `gpt-4o-mini-audio-preview`) have been validated end-to-end on real hardware. The other providers in the table are architecturally compatible but **have not been tested yet** — contributions welcome (see Contributing section).
 
 | Provider | Example Model | Status |
 |---|---|---|
@@ -125,7 +125,7 @@ Response displayed on screen in real time
  
 **Hardware:** ESP32-S3 kits (e.g., ESP32-S3-Touch-LCD) starting at **~US$20**
  
-- 🔋 **Optimized Battery**: Native Deep Sleep (< µA), lasts for days. Instant Wake-on-Button.
+- 🔋 **Optimized Battery**: Native Deep Sleep (< 10 µA), lasts for days. Instant Wake-on-Button.
 - 🎙️ **Refined Processing**: Advanced firmware with high-pass RMS audio filtering to reduce noise and improve voice clarity.
 - ⚙️ **Captive Portal**: Configures Wi-Fi, AI credentials (token, URL, model), and expert profiles dynamically — no USB cable needed.
 - ⚡ **High Robustness**: Asynchronous management with `FreeRTOS Queues` and optimized use of 8MB `PSRAM`.
@@ -161,11 +161,11 @@ Response displayed on screen in real time
 | Feature | ESP32-S3 (Lite) | ESP32-P4-EYE (Pro) |
 |---|---|---|
 | **Focus** | **Portability / Battery** | **Vision / Performance** |
-| **Integrated Camera** | ❌ | ✅ 2 Megapixels |
+| **Integrated Camera** | ❌ (Depends on external module) | ✅ 2 Megapixels |
 | **LVGL Interface** | ✅ ST7789 / SPI | ✅ High Performance / MIPI-DSI |
 | **SD Storage** | ✅ Optimized / SPI | ✅ High Speed / SDIO 4-Bit |
 | **Wi-Fi** | Native Internal STA | Via Auxiliary C6 (ESP-Hosted)|
-| **Optimized Battery** | ✅ Native Deep Sleep (< µA) | ❌ |
+| **Optimized Battery** | ✅ Native Deep Sleep (< 10 µA) | ❌ |
 
 ---
 
@@ -228,7 +228,7 @@ Instead of a generic assistant, the device **changes its behavior** according to
 
 > Today, a doctor pays US$500/month for a transcription app. An agronomist flies for hours to give a field diagnosis. An engineer opens 800-page manuals to identify a failure.
 >
-> **With US$33 of hardware and this firmware, any professional carries the specialist in their pocket — no platform subscription, no cameras sending images to third-party servers.**
+> **With ~US$20-33 of hardware and this firmware, any professional carries the specialist in their pocket — no mandatory platform subscription (just API token or free local on-premise), no cameras sending images to third-party servers (via private gateway).**
 
 ### How profiles work technically
 
@@ -248,6 +248,8 @@ Profiles are **system prompts** stored in `/sdcard/data/config.txt` on the SD ca
   "wifi": { "ssid": "MyNetwork", "password": "..." }
 }
 ```
+
+> The Captive Portal maps these fields respectively: "Personalidade" edits the personality string, "Perfis" edits the individual prompt blocks, etc.
 
 Want a fully customized profile for your business? Configure it via the Captive Portal directly in the field.
 
@@ -281,16 +283,18 @@ The project's modular architecture allows the same logic — media capture, AI o
 
 ### 1. Clone and configure
 ```bash
-git clone https://github.com/marcelinoandrade/assistente-de-IA.git
+git clone https://github.com/marcelinoandrade/assistente-de-IA.git # Core repo for ExpertOnDevice-AI
 cd assistente-de-IA
 
-# Copy the credentials template
+# Copy the credentials template (used for initial firmware compilation)
 cp firmware/esp32_p4_firmware/components/bsp/include/secret.h.example \
    firmware/esp32_p4_firmware/components/bsp/include/secret.h
 
 # Edit secret.h with your editor and fill in:
 # SECRET_WIFI_SSID, SECRET_WIFI_PASS, SECRET_OPENAI_API_KEY
 ```
+
+> Note: While `secret.h` configures the initial build, all keys and Wi-Fi can be dynamically changed later in the field through the Captive Portal without recompiling.
 
 ### 2. Build and flash (P4)
 ```bash
@@ -309,7 +313,7 @@ idf.py -p /dev/ttyUSB0 build flash monitor  # Linux
 ### 3. ⚙️ Zero-Touch Configuration (Captive Portal)
 > No need to recompile! Perfect for field deployment.
 
-1. **Hold the physical button + touch the profile button (M) for 10 seconds** (S3) or **hold BTN2 + BTN3 for 10 seconds** (P4)
+1. **Hold the recording button (e.g., BOOT/Encoder) + touch the profile button (M) for 10 seconds** (S3) or **hold BTN2 + BTN3 for 10 seconds** (P4)
 2. Connect to the `Assistant-Config-S3` (S3) or `Assistant-Config-P4` (P4) Wi-Fi (no password)
 3. Open the browser at `http://192.168.4.1`
 4. Fill in SSID, Password, Token and AI URL — the device restarts automatically
@@ -321,8 +325,8 @@ idf.py -p /dev/ttyUSB0 build flash monitor  # Linux
 
 📷 Photo+Voice Mode
    → Turn the KNOB to select "Photo+Voice" mode
-   → Press BTN1 to capture a photo
-   → Hold ENCODER → Ask your question about the photo → Release
+   → Press BOOT/BTN1 to capture a photo
+   → Hold ENCODER (recording button) → Ask your question about the photo → Release
 ```
 
 ---
@@ -337,7 +341,7 @@ idf.py -p /dev/ttyUSB0 build flash monitor  # Linux
 ├── logs/
 │   └── chat/     → CHAT_20260222.txt        (daily conversation log)
 └── data/
-    └── settings.json                         (your settings)
+    └── config.txt                            (your active expert profiles and settings)
 ```
 
 ---
@@ -357,8 +361,8 @@ idf.py -p /dev/ttyUSB0 build flash monitor  # Linux
 │  ┌──────▼───────────────┐                  │           │
 │  │    app_storage.c     │        ┌──────────▼───────┐  │
 │  │  config_manager.c    │        │   ESP32-C6       │  │
-│  │  captive_portal.c    │        │  Wi-Fi Remote    │  │
-│  │                      │        │  SDIO 4-bit      │  │
+│  │  captive_portal.c    │        │ Wi-Fi C6 Co-processor│
+│  │                      │        │   SDIO 4-bit     │  │
 │  └──────────────────────┘        └──────────┬───────┘  │
 │          │                                  │           │
 │      SD Card                             Internet       │
@@ -391,7 +395,7 @@ User → [Voice + Optional Photo]
 | Metric | Measured Value |
 |---|---|
 | ⏱️ Full boot (all peripherals) | **~10 seconds** |
-| 🧠 Available PSRAM | **32 MB** (AP HEX PSRAM, 80MHz) |
+| 🧠 Available PSRAM | **32 MB** (P4, AP HEX) / **8 MB** (S3) |
 | 🎙️ Audio chunk | 3,840 bytes / 120ms (16kHz, 16-bit) |
 | 📷 Captured JPEG | 14–15 KB (240×240px, validated) |
 | 💾 WAV recording to SD | **< 300ms** after AI response |
