@@ -30,7 +30,6 @@
 #include "lvgl.h"
 #include "lwip/ip4_addr.h"
 #include "sdmmc_cmd.h"
-#include "secret.h"
 
 static const char *TAG = "bsp";
 
@@ -442,12 +441,32 @@ static esp_err_t bsp_wifi_init(void) {
                           &bsp_wifi_event_handler, NULL, &instance_got_ip),
                       TAG, "ip event register");
 
+  /*
+   * Defer WiFi config and start until we receive credentials
+   * via bsp_wifi_config_and_start().
+   */
+  ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG,
+                      "esp_wifi_set_mode");
+
+  ESP_LOGI(TAG, "Wi-Fi STA mode initialized. Waiting for credentials.");
+  return ESP_OK;
+}
+
+esp_err_t bsp_wifi_config_and_start(const char *ssid, const char *pass) {
+  if (!ssid || ssid[0] == '\0') {
+    return ESP_ERR_INVALID_ARG;
+  }
+
   wifi_config_t wifi_config = {0};
-  strlcpy((char *)wifi_config.sta.ssid, SECRET_WIFI_SSID,
-          sizeof(wifi_config.sta.ssid));
-  strlcpy((char *)wifi_config.sta.password, SECRET_WIFI_PASS,
-          sizeof(wifi_config.sta.password));
-  wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+  strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+  if (pass && pass[0] != '\0') {
+    strlcpy((char *)wifi_config.sta.password, pass,
+            sizeof(wifi_config.sta.password));
+    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+  } else {
+    wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
+  }
+
   wifi_config.sta.pmf_cfg.capable = true;
   wifi_config.sta.pmf_cfg.required = false;
 
@@ -457,9 +476,7 @@ static esp_err_t bsp_wifi_init(void) {
                       "esp_wifi_set_config");
   ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "esp_wifi_start");
 
-  // Do NOT block here waiting for the connection.
-  // Return OK immediately so the GUI and main loop can start.
-  ESP_LOGI(TAG, "Wi-Fi connection started in background");
+  ESP_LOGI(TAG, "Wi-Fi connection started for SSID: %s", ssid);
   return ESP_OK;
 }
 

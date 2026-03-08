@@ -12,8 +12,6 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
-#include "secret.h" /* fallback: SECRET_WIFI_SSID, SECRET_OPENAI_API_KEY, etc. */
-
 static const char *TAG = "config_mgr";
 
 #define SETTINGS_PATH "/sdcard/data/config.txt"
@@ -26,9 +24,9 @@ static const char *TAG = "config_mgr";
  * Singleton — valores default (fallback quando config.txt não existe)
  * ----------------------------------------------------------------------- */
 static app_config_t s_config = {
-    .wifi_ssid = SECRET_WIFI_SSID,
-    .wifi_pass = SECRET_WIFI_PASS,
-    .ai_token = SECRET_OPENAI_API_KEY,
+    .wifi_ssid = "",
+    .wifi_pass = "",
+    .ai_token = "",
     /* ai_personality inicializada em config_manager_load() se não houver JSON
      */
     .ai_personality = "",
@@ -379,9 +377,9 @@ esp_err_t config_manager_update_and_save(const char *ssid, const char *pass,
                                          const char *ai_model) {
   if (ssid)
     strlcpy(s_config.wifi_ssid, ssid, sizeof(s_config.wifi_ssid));
-  if (pass)
+  if (pass && pass[0] != '\0')
     strlcpy(s_config.wifi_pass, pass, sizeof(s_config.wifi_pass));
-  if (ai_token)
+  if (ai_token && ai_token[0] != '\0')
     strlcpy(s_config.ai_token, ai_token, sizeof(s_config.ai_token));
   if (ai_personality)
     strlcpy(s_config.ai_personality, ai_personality,

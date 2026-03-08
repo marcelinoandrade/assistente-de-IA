@@ -1180,6 +1180,15 @@ esp_err_t app_init(void) {
              esp_err_to_name(cfg_err));
   }
 
+  // Now that config is loaded, configure and start the WiFi connection
+  const app_config_t *cfg = config_manager_get();
+  esp_err_t wifi_err =
+      bsp_wifi_config_and_start(cfg->wifi_ssid, cfg->wifi_pass);
+  if (wifi_err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to configure and start WiFi: %s",
+             esp_err_to_name(wifi_err));
+  }
+
   // Restore the active profile from NVS/settings
   s_expert_profile = config_manager_get()->expert_profile;
 

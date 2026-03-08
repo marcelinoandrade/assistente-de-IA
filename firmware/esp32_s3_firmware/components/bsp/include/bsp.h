@@ -41,6 +41,12 @@ esp_err_t bsp_audio_capture_blocking(const bsp_audio_capture_cfg_t *cfg,
  */
 esp_err_t bsp_sdcard_detect_init(void);
 
+/**
+ * @brief Configure and start WiFi STA with the provided credentials.
+ *        This should be called from app_init after config is loaded.
+ */
+esp_err_t bsp_wifi_config_and_start(const char *ssid, const char *pass);
+
 /** @brief Returns true if an SD card is physically present (best-effort). */
 bool bsp_sdcard_is_present(void);
 
