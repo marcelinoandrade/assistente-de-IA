@@ -1,11 +1,3 @@
-# 🚀 Media Kit: ExpertOnDevice-AI
-
-This document contains ready-to-use materials to help promote the project on social media, forums, and presentations. Feel free to copy, adapt, and share!
-
-> **Main Hook:** 
-> *"Are you tired of paying $20/month per user and having your data train third-party models? ExpertOnDevice-AI brings Sovereignty, Auditing, and Expertise in a $30 ESP32. Not a toy. A Sovereign AI Infrastructure for the Real World."*
-
----
 
 ## 🏛️ The 4 Pillars of Edge AI Manifesto
 
