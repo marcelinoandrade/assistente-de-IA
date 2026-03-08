@@ -30,10 +30,10 @@
 
 More than a simple "AI assistant", this is a **multimodal, configurable, and sovereign platform for professional applications**, designed for scale deployment and multiple monetization models.
 
-- **🛡️ Radical Data Sovereignty**: Your data never touches the cloud without your permission. Run any provider via a private gateway for full *On-Premise* sovereignty.
-- **👁️ Native Auditing**: Every AI decision is natively recorded in audio and logged on the SD Card for institutional *compliance*. Combines voice and camera interaction in real time.
-- **🧠 Total Agnosticism**: Swap brains (GPT-4o, Llama 3, Groq, Ollama) via Web Portal without recompiling a single line of C. Eliminates **vendor lock-in** (see architectures below).
-- **💼 Domain Expertise (B2B)**: From Agronomist to Engineer, the hardware assumes a technical persona with zero hallucinations. Deploy the behavior of different experts on the same embedded hardware by simply changing the context, creating high-value segmented product lines.
+- **🛡️ Radical Data Sovereignty:** Your data never touches the cloud without your permission. Through a Private Gateway (Ollama/LiteLLM), you can process everything locally, eliminating dependence on public clouds and ensuring total privacy.
+- **👁️ Native Auditing:** Absolute transparency. All audio, image, and response data is natively logged to the SD Card. In industrial or healthcare environments, every AI decision is recorded for statutory and institutional compliance.
+- **🧠 Total Agnosticism:** No Vendor Lock-in. Swap brains (GPT-4o, Llama 3, Groq, Gemini) via Web Portal without recompiling a single line of C code.
+- **💼 Domain Expertise (B2B):** Move beyond generic AI. From Agronomist to Engineer, the hardware assumes the desired technical persona through profiles embedded on the SD Card, reducing hallucinations from non-specialized models.
 - **💸 Cost-Effective Hardware (< US$33)**: Based on ESP32-S3 (Lite) and P4 (Pro), ensuring extremely low CAPEX, enabling large-scale sales to industrial fleets, schools, and hospitals.
 - **🧩 Ecosystem and Licensing**: Modular firmware ready for OEM agreements. Enables recurring revenue by selling "expert profiles as a service" far beyond simple hardware sales.
 
