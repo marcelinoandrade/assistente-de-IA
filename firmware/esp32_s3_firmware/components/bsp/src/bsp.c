@@ -80,6 +80,9 @@ static esp_lcd_touch_handle_t s_touch_handle;
 static i2s_chan_handle_t s_i2s_rx_handle;
 static EventGroupHandle_t s_wifi_event_group;
 static int s_wifi_retry_num;
+static bool s_wifi_shutting_down = false;
+static esp_timer_handle_t s_lvgl_tick_timer = NULL;
+static TaskHandle_t s_lvgl_task_handle = NULL;
 
 #define BSP_WIFI_CONNECTED_BIT BIT0
 #define BSP_WIFI_FAIL_BIT BIT1
@@ -144,6 +147,9 @@ static void bsp_lvgl_task(void *arg) {
 }
 
 static void bsp_brightness_init(void) {
+  /* Liberar hold do deep sleep anterior — gpio_hold_en() persiste após wakeup.
+   * Sem este disable, o GPIO permanece travado LOW e o backlight não acende. */
+  gpio_hold_dis((gpio_num_t)BSP_LCD_BK_LIGHT_GPIO);
   gpio_set_direction(BSP_LCD_BK_LIGHT_GPIO, GPIO_MODE_OUTPUT);
   gpio_set_level(BSP_LCD_BK_LIGHT_GPIO, 1);
 
@@ -304,16 +310,16 @@ static esp_err_t bsp_lvgl_init(void) {
       .callback = bsp_increase_lvgl_tick,
       .name = "lvgl_tick",
   };
-  esp_timer_handle_t lvgl_tick_timer = NULL;
-  ESP_RETURN_ON_ERROR(esp_timer_create(&tick_timer_args, &lvgl_tick_timer), TAG,
+  ESP_RETURN_ON_ERROR(esp_timer_create(&tick_timer_args, &s_lvgl_tick_timer), TAG,
                       "tick timer create");
   ESP_RETURN_ON_ERROR(
-      esp_timer_start_periodic(lvgl_tick_timer, BSP_LVGL_TICK_PERIOD_MS * 1000),
+      esp_timer_start_periodic(s_lvgl_tick_timer, BSP_LVGL_TICK_PERIOD_MS * 1000),
       TAG, "tick timer start");
 
   BaseType_t task_ok =
       xTaskCreatePinnedToCore(bsp_lvgl_task, "lvgl_task", BSP_LVGL_TASK_STACK,
-                              NULL, BSP_LVGL_TASK_PRIORITY, NULL, 1);
+                              NULL, BSP_LVGL_TASK_PRIORITY,
+                              &s_lvgl_task_handle, 1);
   if (task_ok != pdPASS) {
     return ESP_FAIL;
   }
@@ -384,9 +390,12 @@ static void bsp_wifi_event_handler(void *arg, esp_event_base_t event_base,
   (void)arg;
 
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    esp_wifi_connect();
+    if (!s_wifi_shutting_down) esp_wifi_connect();
   } else if (event_base == WIFI_EVENT &&
              event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    if (s_wifi_shutting_down) {
+      return; /* Ignorar desconexão gerada pelo shutdown — não reconectar */
+    }
     if (s_wifi_retry_num < BSP_WIFI_MAXIMUM_RETRY) {
       esp_wifi_connect();
       s_wifi_retry_num++;
@@ -401,6 +410,10 @@ static void bsp_wifi_event_handler(void *arg, esp_event_base_t event_base,
     ESP_LOGI(TAG, "Wi-Fi connected, got IP: " IPSTR,
              IP2STR(&event->ip_info.ip));
     xEventGroupSetBits(s_wifi_event_group, BSP_WIFI_CONNECTED_BIT);
+
+    /* Enable modem-sleep power save: radio sleeps between DTIM beacons */
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    ESP_LOGI(TAG, "Wi-Fi Power Save: WIFI_PS_MIN_MODEM enabled");
 
     // Sync time now that we have internet
     static bool s_sntp_initialized = false;
@@ -754,45 +767,106 @@ esp_err_t bsp_sdcard_unmount(void) {
 void bsp_enter_deep_sleep(void) {
   ESP_LOGI("bsp_sleep", "Entering Deep Sleep Mode...");
 
-  /* Turn off LCD backlight */
+  /* --- 1. Deletar a task LVGL (Core 1) para evitar Task WDT no shutdown ---
+   * DEVE ser o primeiro passo: sem esta deleção, a task entra em loop com
+   * vTaskDelay(1ms) que starva o IDLE1 enquanto aguardamos o botão. */
+  if (s_lvgl_task_handle) {
+    vTaskDelete(s_lvgl_task_handle);
+    s_lvgl_task_handle = NULL;
+    ESP_LOGI("bsp_sleep", "LVGL task deleted (Core 1 freed)");
+  }
+
+  /* --- 2. Parar o LVGL tick timer (500 IRQs/s) --- */
+  if (s_lvgl_tick_timer) {
+    esp_timer_stop(s_lvgl_tick_timer);
+    ESP_LOGI("bsp_sleep", "LVGL tick timer stopped");
+  }
+
+  /* --- 3. Apagar backlight e travar GPIO LOW durante o sleep --- */
   ledc_set_duty(LCD_BL_LEDC_MODE, LCD_BL_LEDC_CHANNEL, 0);
   ledc_update_duty(LCD_BL_LEDC_MODE, LCD_BL_LEDC_CHANNEL);
+  ledc_timer_pause(LCD_BL_LEDC_MODE, LCD_BL_LEDC_TIMER);
+  /* ledc_timer_pause deixa o pino em estado indeterminado com sleep_gpio
+   * isolation ativo — pode flutuar HIGH ligando o backlight durante o sleep.
+   * Força explicitamente LOW e trava com gpio_hold_en(). */
+  gpio_set_direction((gpio_num_t)BSP_LCD_BK_LIGHT_GPIO, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)BSP_LCD_BK_LIGHT_GPIO, 0);
+  gpio_hold_en((gpio_num_t)BSP_LCD_BK_LIGHT_GPIO);
+  ESP_LOGI("bsp_sleep", "Backlight GPIO%d forced LOW and held", BSP_LCD_BK_LIGHT_GPIO);
+  vTaskDelay(pdMS_TO_TICKS(10));
 
-  /* Turn off LCD display to save power */
+  /* --- 3. Desligar o display ST7789 --- */
   if (s_panel_handle) {
     esp_lcd_panel_disp_on_off(s_panel_handle, false);
   }
 
-  /* Unmount SD Card cleanly before sleeping */
-  bsp_sdcard_unmount();
+  /* --- 4. Parar I2S / microfone INMP441 --- */
+  if (s_i2s_rx_handle) {
+    i2s_channel_disable(s_i2s_rx_handle);
+    i2s_del_channel(s_i2s_rx_handle);
+    s_i2s_rx_handle = NULL;
+    ESP_LOGI("bsp_sleep", "I2S channel stopped and deleted");
+  }
+  /* Flotar pinos I2S para evitar corrente de fuga */
+  gpio_set_direction((gpio_num_t)BSP_MIC_BCLK_GPIO, GPIO_MODE_INPUT);
+  gpio_set_pull_mode((gpio_num_t)BSP_MIC_BCLK_GPIO, GPIO_FLOATING);
+  gpio_set_direction((gpio_num_t)BSP_MIC_WS_GPIO, GPIO_MODE_INPUT);
+  gpio_set_pull_mode((gpio_num_t)BSP_MIC_WS_GPIO, GPIO_FLOATING);
+  gpio_set_direction((gpio_num_t)BSP_MIC_SD_GPIO, GPIO_MODE_INPUT);
+  gpio_set_pull_mode((gpio_num_t)BSP_MIC_SD_GPIO, GPIO_FLOATING);
 
-  /* Configure Wakeup Source: Physical Button (Active-Low during sleep) */
+  /* --- 5. Parar SNTP antes de derrubar o WiFi --- */
+  esp_sntp_stop();
+  ESP_LOGI("bsp_sleep", "SNTP stopped");
+
+  /* --- 6. Parar WiFi completamente (maior consumidor) --- */
+  /* Sinalizar shutdown para evitar race condition no event handler */
+  s_wifi_shutting_down = true;
+  esp_wifi_stop();
+  esp_wifi_deinit();
+  ESP_LOGI("bsp_sleep", "WiFi stopped and deinitialized");
+
+  /* --- 7. Deletar driver I2C (touch CST816S) --- */
+  i2c_driver_delete(BSP_I2C_NUM);
+  /* Flotar pinos I2C para evitar corrente pelos pull-ups externos */
+  gpio_set_direction((gpio_num_t)BSP_PIN_NUM_I2C_SDA, GPIO_MODE_INPUT);
+  gpio_set_pull_mode((gpio_num_t)BSP_PIN_NUM_I2C_SDA, GPIO_FLOATING);
+  gpio_set_direction((gpio_num_t)BSP_PIN_NUM_I2C_SCL, GPIO_MODE_INPUT);
+  gpio_set_pull_mode((gpio_num_t)BSP_PIN_NUM_I2C_SCL, GPIO_FLOATING);
+  ESP_LOGI("bsp_sleep", "I2C driver deleted");
+
+  /* --- 8. Desmontar SD card e liberar barramento SPI --- */
+  bsp_sdcard_unmount();
+  spi_bus_free(BSP_SPI_HOST);
+  ESP_LOGI("bsp_sleep", "SPI bus freed");
+
+  /* --- 9. Configurar GPIO do botão como wakeup ext1 --- */
   rtc_gpio_init((gpio_num_t)BSP_BUTTON_GPIO);
   rtc_gpio_set_direction((gpio_num_t)BSP_BUTTON_GPIO, RTC_GPIO_MODE_INPUT_ONLY);
-  /* Retain internal pull-up during deep sleep via RTC controller */
   rtc_gpio_pullup_en((gpio_num_t)BSP_BUTTON_GPIO);
   rtc_gpio_pulldown_dis((gpio_num_t)BSP_BUTTON_GPIO);
 
-  /* Give it a moment to stabilize */
+  /* Aguardar estabilização do nível do pino */
   vTaskDelay(pdMS_TO_TICKS(20));
 
-  /* Check state - if it's already LOW, sleep would trigger immediately */
+  /* Se botão já estiver pressionado (LOW), aguardar soltar para não acordar imediatamente */
   if (rtc_gpio_get_level((gpio_num_t)BSP_BUTTON_GPIO) == 0) {
-    ESP_LOGW("bsp_sleep",
-             "Button is already LOW (pressed?). Waiting for release...");
+    ESP_LOGW("bsp_sleep", "Botao pressionado. Aguardando soltar...");
     while (rtc_gpio_get_level((gpio_num_t)BSP_BUTTON_GPIO) == 0) {
       vTaskDelay(pdMS_TO_TICKS(50));
     }
-    ESP_LOGI("bsp_sleep", "Button released, proceeding to sleep.");
+    ESP_LOGI("bsp_sleep", "Botao solto. Entrando em sleep.");
   }
 
-  /* Hold the GPIO state during deep sleep */
+  /* Manter estado do GPIO durante o deep sleep */
   rtc_gpio_hold_en((gpio_num_t)BSP_BUTTON_GPIO);
 
-  /* Use ext1 wakeup on LOW level */
+  /* Wakeup por nível LOW no botão (ext1) */
   esp_sleep_enable_ext1_wakeup(1ULL << BSP_BUTTON_GPIO,
                                ESP_EXT1_WAKEUP_ANY_LOW);
 
-  /* Enter Deep Sleep */
+  ESP_LOGI("bsp_sleep", "Todos perifericos desligados. Entrando em Deep Sleep.");
+
+  /* --- 10. Entrar em Deep Sleep --- */
   esp_deep_sleep_start();
 }
